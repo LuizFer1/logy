@@ -217,15 +217,29 @@ func TestStatusWhenDaemonRunning(t *testing.T) {
 	}
 }
 
+func addTestRoot(t *testing.T, home string) string {
+	t.Helper()
+	root := filepath.Join(home, "workspace")
+	if err := os.MkdirAll(root, 0755); err != nil {
+		t.Fatal(err)
+	}
+	var stdout, stderr bytes.Buffer
+	if code := runWith(cliOptions{Home: home, NonInteractive: true}, []string{"root", "add", root}, &stdout, &stderr); code != 0 {
+		t.Fatalf("root add exit = %d, stderr = %q", code, stderr.String())
+	}
+	return root
+}
+
 func TestStartForegroundServesStatusThenStop(t *testing.T) {
 	t.Parallel()
 	home := t.TempDir()
+	addTestRoot(t, home)
 	pipe := testCLIPipeName(t)
 
 	done := make(chan int, 1)
 	go func() {
 		var stdout, stderr bytes.Buffer
-		done <- runWith(cliOptions{Home: home, Pipe: pipe}, []string{"start", "--foreground"}, &stdout, &stderr)
+		done <- runWith(cliOptions{Home: home, Pipe: pipe, NonInteractive: true}, []string{"start", "--foreground"}, &stdout, &stderr)
 	}()
 	t.Cleanup(func() { stopDaemon(t, home, pipe) })
 	waitRunning(t, home, pipe)
@@ -248,16 +262,18 @@ func TestStartForegroundServesStatusThenStop(t *testing.T) {
 func TestStartDetachedReturnsWhileDaemonRuns(t *testing.T) {
 	t.Parallel()
 	home := t.TempDir()
+	addTestRoot(t, home)
 	pipe := testCLIPipeName(t)
 
 	fgDone := make(chan int, 1)
 	opts := cliOptions{
-		Home: home,
-		Pipe: pipe,
+		Home:           home,
+		Pipe:           pipe,
+		NonInteractive: true,
 		StartBackground: func(home, pipe string) error {
 			go func() {
 				var stdout, stderr bytes.Buffer
-				fgDone <- runWith(cliOptions{Home: home, Pipe: pipe}, []string{"start", "--foreground"}, &stdout, &stderr)
+				fgDone <- runWith(cliOptions{Home: home, Pipe: pipe, NonInteractive: true}, []string{"start", "--foreground"}, &stdout, &stderr)
 			}()
 			return nil
 		},
@@ -295,12 +311,13 @@ func TestStartDetachedReturnsWhileDaemonRuns(t *testing.T) {
 func TestStartRejectsDuplicate(t *testing.T) {
 	t.Parallel()
 	home := t.TempDir()
+	addTestRoot(t, home)
 	pipe := testCLIPipeName(t)
 
 	done := make(chan int, 1)
 	go func() {
 		var stdout, stderr bytes.Buffer
-		done <- runWith(cliOptions{Home: home, Pipe: pipe}, []string{"start", "--foreground"}, &stdout, &stderr)
+		done <- runWith(cliOptions{Home: home, Pipe: pipe, NonInteractive: true}, []string{"start", "--foreground"}, &stdout, &stderr)
 	}()
 	t.Cleanup(func() {
 		stopDaemon(t, home, pipe)
@@ -312,7 +329,7 @@ func TestStartRejectsDuplicate(t *testing.T) {
 	waitRunning(t, home, pipe)
 
 	var stdout, stderr bytes.Buffer
-	code := runWith(cliOptions{Home: home, Pipe: pipe}, []string{"start"}, &stdout, &stderr)
+	code := runWith(cliOptions{Home: home, Pipe: pipe, NonInteractive: true}, []string{"start"}, &stdout, &stderr)
 	if code == 0 {
 		t.Fatal("second start exit = 0, want non-zero")
 	}
@@ -419,6 +436,21 @@ func TestExecCLIPersistsTerminalEvent(t *testing.T) {
 	}
 	if evts[0].Source != "terminal" {
 		t.Fatalf("source = %q, want terminal", evts[0].Source)
+	}
+}
+
+func TestUpdateCommandIsRecognized(t *testing.T) {
+	t.Parallel()
+	var stdout, stderr bytes.Buffer
+	code := runWith(cliOptions{Home: t.TempDir()}, []string{"update", "--not-a-flag"}, &stdout, &stderr)
+	if code == 0 {
+		t.Fatal("update with bad flag exit = 0, want non-zero")
+	}
+	if strings.Contains(stderr.String(), "unknown command: update") {
+		t.Fatalf("update command missing: stderr = %q", stderr.String())
+	}
+	if !strings.Contains(strings.ToLower(stderr.String()), "update") {
+		t.Fatalf("stderr = %q, want update usage/error", stderr.String())
 	}
 }
 

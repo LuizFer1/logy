@@ -1,14 +1,18 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
+
+	"github.com/mattn/go-isatty"
 
 	"logy/internal/ai"
 	"logy/internal/collectors"
@@ -21,6 +25,8 @@ import (
 	"logy/internal/platform"
 	"logy/internal/report"
 	"logy/internal/storage"
+	"logy/internal/update"
+	"logy/internal/version"
 )
 
 func (c *cli) loadConfig() (config.Config, error) {
@@ -64,36 +70,14 @@ func absPath(value string) (string, error) {
 
 func (c *cli) cmdRoot(args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: logy root add <path> | logy root list")
+		return errors.New("usage: logy root add [path] | logy root list")
 	}
 	switch args[0] {
 	case "add":
 		if len(args) < 2 {
-			return errors.New("usage: logy root add <path>")
+			return c.promptAddRoots(true)
 		}
-		path, err := absPath(args[1])
-		if err != nil {
-			return err
-		}
-		cfg, err := c.loadConfig()
-		if err != nil {
-			return err
-		}
-		for _, existing := range cfg.Roots {
-			if strings.EqualFold(existing, path) {
-				return nil
-			}
-		}
-		cfg.Roots = append(cfg.Roots, path)
-		if err := c.saveConfig(cfg); err != nil {
-			return err
-		}
-		db, err := c.openDB()
-		if err != nil {
-			return err
-		}
-		defer db.Close()
-		return db.AddRoot(context.Background(), path)
+		return c.addRootPath(args[1])
 	case "list":
 		cfg, err := c.loadConfig()
 		if err != nil {
@@ -106,6 +90,114 @@ func (c *cli) cmdRoot(args []string) error {
 	default:
 		return fmt.Errorf("unknown root command: %s", args[0])
 	}
+}
+
+func (c *cli) addRootPath(raw string) error {
+	path, err := absPath(raw)
+	if err != nil {
+		return err
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return fmt.Errorf("caminho inválido: %w", err)
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("caminho não é uma pasta: %s", path)
+	}
+	cfg, err := c.loadConfig()
+	if err != nil {
+		return err
+	}
+	for _, existing := range cfg.Roots {
+		if strings.EqualFold(existing, path) {
+			fmt.Fprintf(c.stdout, "já cadastrada: %s\n", path)
+			return nil
+		}
+	}
+	cfg.Roots = append(cfg.Roots, path)
+	if err := c.saveConfig(cfg); err != nil {
+		return err
+	}
+	db, err := c.openDB()
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	if err := db.AddRoot(context.Background(), path); err != nil {
+		return err
+	}
+	fmt.Fprintf(c.stdout, "raiz adicionada: %s\n", path)
+	return nil
+}
+
+func (c *cli) isInteractive() bool {
+	if c.opts.NonInteractive {
+		return false
+	}
+	if c.opts.Interactive {
+		return true
+	}
+	if c.opts.Stdin != nil {
+		return false
+	}
+	return isatty.IsTerminal(os.Stdin.Fd()) || isatty.IsCygwinTerminal(os.Stdin.Fd())
+}
+
+func (c *cli) ensureRootsConfigured() error {
+	cfg, err := c.loadConfig()
+	if err != nil {
+		return err
+	}
+	if len(cfg.Roots) > 0 {
+		return nil
+	}
+	if !c.isInteractive() {
+		return errors.New("nenhuma raiz configurada; rode: logy root add C:\\caminho")
+	}
+	return c.promptAddRoots(true)
+}
+
+// promptAddRoots asks for one or more root folders. Empty line finishes.
+// requireAtLeastOne fails if the user finishes without adding any path.
+func (c *cli) promptAddRoots(requireAtLeastOne bool) error {
+	fmt.Fprintln(c.stdout, "Configure as pastas onde o Logy deve procurar projetos Git.")
+	fmt.Fprintln(c.stdout, "Exemplos: C:\\trabalho   C:\\startups   C:\\pessoal")
+	fmt.Fprintln(c.stdout, "O Logy varre as subpastas, encontra pastas .git e para de descer quando acha um repositório.")
+	fmt.Fprintln(c.stdout, "Digite um caminho por linha. Linha vazia termina.")
+
+	reader := bufio.NewReader(c.stdin)
+	added := 0
+	for {
+		fmt.Fprint(c.stdout, "pasta> ")
+		line, err := reader.ReadString('\n')
+		if err != nil && strings.TrimSpace(line) == "" {
+			break
+		}
+		line = strings.TrimSpace(line)
+		if line == "" {
+			break
+		}
+		if err := c.addRootPath(line); err != nil {
+			fmt.Fprintln(c.stderr, err)
+			continue
+		}
+		added++
+	}
+	if requireAtLeastOne && added == 0 {
+		return errors.New("nenhuma raiz adicionada; rode de novo ou use: logy root add C:\\caminho")
+	}
+	if added > 0 {
+		cfg, err := c.loadConfig()
+		if err != nil {
+			return err
+		}
+		found, err := discovery.Scan(cfg.Roots, discovery.ScanOptions{MaxDepth: cfg.DiscoveryDepth})
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(c.stdout, "pronto: %d raiz(es), %d projeto(s) Git encontrados agora\n", len(cfg.Roots), len(found))
+	}
+	return nil
 }
 
 func (c *cli) cmdProject(args []string) error {
@@ -436,6 +528,47 @@ func (c *cli) cmdPurge(args []string) error {
 	return nil
 }
 
+func (c *cli) cmdUpdate(args []string) error {
+	yes := false
+	checkOnly := false
+	for _, arg := range args {
+		switch arg {
+		case "--yes", "-y":
+			yes = true
+		case "--check":
+			checkOnly = true
+		default:
+			return fmt.Errorf("usage: logy update [--check] [--yes]")
+		}
+	}
+	exe, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	update.CleanupStaleOld(exe)
+	res, err := update.Run(update.Options{
+		CurrentVersion: version.Version,
+		GOOS:           runtime.GOOS,
+		GOARCH:         runtime.GOARCH,
+		ExePath:        exe,
+		Yes:            yes,
+		CheckOnly:      checkOnly,
+		Stdin:          os.Stdin,
+		Stdout:         c.stdout,
+	})
+	if err != nil {
+		return err
+	}
+	if checkOnly && res.Pending {
+		// Exit 3 means an update is available (same convention as Clocky).
+		return errUpdateAvailable
+	}
+	return nil
+}
+
+// errUpdateAvailable is returned by update --check when a newer release exists.
+var errUpdateAvailable = errors.New("update available")
+
 func (c *cli) cmdStartup(args []string) error {
 	if len(args) == 0 {
 		return errors.New("usage: logy startup enable|disable|status")
@@ -522,6 +655,9 @@ func (c *cli) cmdStart(args []string) error {
 			return fmt.Errorf("unknown start flag: %s (usage: logy start [--foreground])", arg)
 		}
 	}
+	if err := c.ensureRootsConfigured(); err != nil {
+		return err
+	}
 	if foreground {
 		return c.runDaemonForeground()
 	}
@@ -566,16 +702,22 @@ func (c *cli) spawnDetachedDaemon(home, pipe string) error {
 	if err != nil {
 		return err
 	}
+	null, err := os.OpenFile(os.DevNull, os.O_RDWR, 0)
+	if err != nil {
+		return err
+	}
+	// Child keeps the handle; parent must not close it before Start returns.
 	cmd := exec.Command(exe, "start", "--foreground")
 	cmd.Env = append(os.Environ(),
 		"LOGY_HOME="+home,
 		"LOGY_PIPE="+pipe,
 	)
-	cmd.Stdout = nil
-	cmd.Stderr = nil
-	cmd.Stdin = nil
+	cmd.Stdout = null
+	cmd.Stderr = null
+	cmd.Stdin = null
 	daemon.Detach(cmd)
 	if err := cmd.Start(); err != nil {
+		_ = null.Close()
 		return err
 	}
 	// Parent does not wait; child outlives this process.

@@ -40,7 +40,13 @@ logy status
 logy stop
 logy doctor
 
-logy root add C:\dev
+logy start
+# na 1ª vez, o Logy pergunta as pastas-raiz (trabalho, startups, pessoal…)
+# digite um caminho por linha; linha vazia termina
+
+logy root add C:\trabalho
+logy root add
+# sem caminho: modo interativo para várias pastas
 logy root list
 logy project list
 logy project show C:\dev\meu-projeto
@@ -64,6 +70,9 @@ logy purge --older-than 2025-01-01
 logy startup enable
 logy startup status
 logy startup disable
+
+logy update --check
+logy update --yes
 ```
 
 `logy start` sobe o daemon **em background** e devolve o terminal. O processo continua após fechar a janela; pare com `logy stop` ou ao desligar o PC. Use `logy start --foreground` só para depurar.

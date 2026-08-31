@@ -80,14 +80,15 @@ func Scan(roots []string, opts ScanOptions) ([]Result, error) {
 			}
 
 			if d.IsDir() {
-				// Check for .git directory
+				// .git may be a directory or a gitfile (worktree/submodule).
 				gitPath := filepath.Join(path, ".git")
-				if info, err := os.Stat(gitPath); err == nil && info.IsDir() {
+				if info, err := os.Stat(gitPath); err == nil {
 					results = append(results, Result{
 						Path: path,
 						Name: filepath.Base(path),
 					})
-					return filepath.SkipDir // Don't descend into git repo
+					_ = info
+					return filepath.SkipDir // stop under this repo; siblings still scanned
 				}
 			}
 

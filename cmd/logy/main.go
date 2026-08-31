@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -30,6 +31,7 @@ var commandNames = []string{
 	"project",
 	"doctor",
 	"version",
+	"update",
 }
 
 const usageSummary = "Usage: logy <command> [arguments]"
@@ -40,12 +42,16 @@ type cliOptions struct {
 	Now  time.Time
 	// StartBackground launches the daemon process. Nil uses a detached OS child.
 	StartBackground func(home, pipe string) error
+	Stdin           io.Reader
+	Interactive     bool // force prompts (tests)
+	NonInteractive  bool // force no prompts (tests/CI)
 }
 
 type cli struct {
 	opts   cliOptions
 	stdout io.Writer
 	stderr io.Writer
+	stdin  io.Reader
 }
 
 func main() {
@@ -75,8 +81,12 @@ func runWith(opts cliOptions, args []string, stdout, stderr io.Writer) int {
 	if opts.Now.IsZero() {
 		opts.Now = time.Now()
 	}
+	stdin := opts.Stdin
+	if stdin == nil {
+		stdin = os.Stdin
+	}
 
-	c := &cli{opts: opts, stdout: stdout, stderr: stderr}
+	c := &cli{opts: opts, stdout: stdout, stderr: stderr, stdin: stdin}
 
 	if len(args) == 0 {
 		writeUsage(stderr, "missing command")
@@ -107,6 +117,7 @@ func runWith(opts cliOptions, args []string, stdout, stderr io.Writer) int {
 		"project":   c.cmdProject,
 		"doctor":    c.cmdDoctor,
 		"version":   c.cmdVersion,
+		"update":    c.cmdUpdate,
 	}
 
 	handler, ok := handlers[args[0]]
@@ -116,6 +127,9 @@ func runWith(opts cliOptions, args []string, stdout, stderr io.Writer) int {
 	}
 
 	if err := handler(args[1:]); err != nil {
+		if errors.Is(err, errUpdateAvailable) {
+			return 3
+		}
 		fmt.Fprintln(stderr, err)
 		return 1
 	}

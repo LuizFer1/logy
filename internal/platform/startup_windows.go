@@ -17,7 +17,20 @@ func EnableStartup(home string) error {
 	if err != nil {
 		return fmt.Errorf("resolve executable: %w", err)
 	}
-	cmd := startupCommand(exe, home)
+	if home == "" {
+		home, _ = os.UserHomeDir()
+		if home != "" {
+			home = home + `\.logy`
+		}
+	}
+	vbsPath := ""
+	if home != "" {
+		vbsPath = home + `\autostart.vbs`
+		if err := writeAutostartVBS(vbsPath, exe, home); err != nil {
+			return fmt.Errorf("write autostart script: %w", err)
+		}
+	}
+	cmd := startupCommand(exe, home, vbsPath)
 
 	key, err := registry.OpenKey(registry.CURRENT_USER, runKeyPath, registry.SET_VALUE|registry.QUERY_VALUE)
 	if err != nil {

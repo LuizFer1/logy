@@ -17,7 +17,7 @@ func DefaultConfig() Config {
 	return Config{
 		DataDir:           dataDir,
 		Roots:             []string{},
-		DiscoveryDepth:    3,
+		DiscoveryDepth:    5,
 		DiscoveryInterval: 5 * time.Minute,
 		AI: AIConfig{
 			Enabled:  false,

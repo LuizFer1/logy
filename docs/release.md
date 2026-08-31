@@ -6,5 +6,6 @@
 4. GitHub Actions (`.github/workflows/release.yml`) runs GoReleaser with that notes file and publishes a GitHub Release with archives + `checksums.txt`.
 5. Users install or upgrade with:
    - `scripts/install.ps1` / `scripts/install.sh`
+   - `logy update` / `logy update --yes` / `logy update --check`
 
 Pin installs with `LOGY_VERSION=v0.1.0`. Forks can set `LOGY_GITHUB_REPO=owner/name`.

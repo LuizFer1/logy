@@ -13,8 +13,8 @@ import (
 func TestDefaultConfig(t *testing.T) {
 	t.Parallel()
 	cfg := DefaultConfig()
-	if cfg.DiscoveryDepth != 3 {
-		t.Errorf("expected DiscoveryDepth 3, got %d", cfg.DiscoveryDepth)
+	if cfg.DiscoveryDepth != 5 {
+		t.Errorf("expected DiscoveryDepth 5, got %d", cfg.DiscoveryDepth)
 	}
 	if cfg.DiscoveryInterval != 5*time.Minute {
 		t.Errorf("expected DiscoveryInterval 5m, got %v", cfg.DiscoveryInterval)

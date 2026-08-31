@@ -23,6 +23,39 @@ func BenchmarkScan(b *testing.B) {
 	}
 }
 
+func TestScannerFindsSiblingAndNestedRepos(t *testing.T) {
+	t.Parallel()
+	// parent/
+	//   with-git/.git
+	//   without-git/
+	//     nested-git/.git
+	root := t.TempDir()
+	withGit := filepath.Join(root, "with-git")
+	without := filepath.Join(root, "without-git")
+	nested := filepath.Join(without, "nested-git")
+	if err := os.MkdirAll(filepath.Join(withGit, ".git"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(nested, ".git"), 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	results, err := Scan([]string{root}, ScanOptions{MaxDepth: 3})
+	if err != nil {
+		t.Fatalf("Scan() error = %v", err)
+	}
+	if len(results) != 2 {
+		t.Fatalf("Scan() found %d repos, want 2 (%#v)", len(results), results)
+	}
+	names := map[string]bool{}
+	for _, r := range results {
+		names[r.Name] = true
+	}
+	if !names["with-git"] || !names["nested-git"] {
+		t.Fatalf("names = %v, want with-git and nested-git", names)
+	}
+}
+
 func TestScanner(t *testing.T) {
 	t.Parallel()
 
