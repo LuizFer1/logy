@@ -1,8 +1,16 @@
 .worktrees/
 .superpowers/
+.dev-home/
 
 # Local Logy data
 *.db
 *.db-wal
 *.db-shm
 logs/
+
+# Local binaries
+logy.exe
+logyDEV.exe
+logyDEV
+dist/
+

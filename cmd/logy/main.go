@@ -4,6 +4,12 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
+	"time"
+
+	"logy/internal/config"
+	"logy/internal/control"
+	"logy/internal/version"
 )
 
 var commandNames = []string{
@@ -15,28 +21,57 @@ var commandNames = []string{
 	"month",
 	"ask",
 	"note",
-}
-
-type commandHandler func([]string) error
-
-var commandHandlers = map[string]commandHandler{
-	"start":  noopCommand,
-	"status": noopCommand,
-	"stop":   noopCommand,
-	"today":  noopCommand,
-	"week":   noopCommand,
-	"month":  noopCommand,
-	"ask":    noopCommand,
-	"note":   noopCommand,
+	"exec",
+	"events",
+	"summarize",
+	"purge",
+	"startup",
+	"root",
+	"project",
+	"doctor",
+	"version",
 }
 
 const usageSummary = "Usage: logy <command> [arguments]"
+
+type cliOptions struct {
+	Home string
+	Pipe string
+	Now  time.Time
+}
+
+type cli struct {
+	opts   cliOptions
+	stdout io.Writer
+	stderr io.Writer
+}
 
 func main() {
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
 }
 
 func run(args []string, stdout, stderr io.Writer) int {
+	return runWith(cliOptions{}, args, stdout, stderr)
+}
+
+func runWith(opts cliOptions, args []string, stdout, stderr io.Writer) int {
+	if opts.Home == "" {
+		home, err := defaultHome()
+		if err != nil {
+			fmt.Fprintln(stderr, err)
+			return 1
+		}
+		opts.Home = home
+	}
+	if opts.Pipe == "" {
+		opts.Pipe = control.PipeName()
+	}
+	if opts.Now.IsZero() {
+		opts.Now = time.Now()
+	}
+
+	c := &cli{opts: opts, stdout: stdout, stderr: stderr}
+
 	if len(args) == 0 {
 		writeUsage(stderr, "missing command")
 		return 1
@@ -48,7 +83,27 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return 0
 	}
 
-	handler, ok := commandHandlers[args[0]]
+	handlers := map[string]func([]string) error{
+		"start":     c.cmdStart,
+		"status":    c.cmdStatus,
+		"stop":      c.cmdStop,
+		"today":     c.cmdToday,
+		"week":      c.cmdWeek,
+		"month":     c.cmdMonth,
+		"ask":       c.cmdAsk,
+		"note":      c.cmdNote,
+		"exec":      c.cmdExec,
+		"events":    c.cmdEvents,
+		"summarize": c.cmdSummarize,
+		"purge":     c.cmdPurge,
+		"startup":   c.cmdStartup,
+		"root":      c.cmdRoot,
+		"project":   c.cmdProject,
+		"doctor":    c.cmdDoctor,
+		"version":   c.cmdVersion,
+	}
+
+	handler, ok := handlers[args[0]]
 	if !ok {
 		writeUsage(stderr, fmt.Sprintf("unknown command: %s", args[0]))
 		return 1
@@ -62,7 +117,18 @@ func run(args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 
-func noopCommand([]string) error {
+func defaultHome() (string, error) {
+	if home := strings.TrimSpace(os.Getenv("LOGY_HOME")); home != "" {
+		return home, nil
+	}
+	return config.ConfigDir()
+}
+
+func (c *cli) cmdVersion(args []string) error {
+	if len(args) > 0 {
+		return fmt.Errorf("usage: logy version")
+	}
+	fmt.Fprintln(c.stdout, version.String())
 	return nil
 }
 

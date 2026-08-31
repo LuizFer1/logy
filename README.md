@@ -2,69 +2,125 @@
 
 Logy é um diário local de desenvolvimento para manter sua memória afiada. Ele acompanha o que foi feito por dia, semana, mês ou projeto e transforma atividade técnica em contexto fácil de recuperar.
 
-O Logy roda como um daemon leve em segundo plano no Windows, grava os dados localmente e oferece uma CLI para consulta. Uma TUI será adicionada futuramente sobre a mesma camada de dados.
+O Logy roda como um daemon leve em segundo plano no Windows, grava os dados localmente e oferece uma CLI para consulta. Uma TUI poderá ser adicionada futuramente sobre a mesma camada de dados.
 
-## O que ele acompanha
+## Install
 
-- Repositórios Git encontrados automaticamente pela presença de pastas `.git`.
-- Commits, branches, merges, rebases, pushes, pulls, diffs e estado do working tree.
-- Comandos executados através de `logy exec`.
-- Sessões de agentes de IA por meio de uma captura genérica de logs e adaptadores específicos.
-- Notas, decisões, erros recorrentes e possíveis pontos de retomada.
-- Alterações de filesystem de forma opcional e agrupada.
+**Windows (PowerShell):**
 
-## Princípios
+```powershell
+irm https://raw.githubusercontent.com/LuizFer1/logy/main/scripts/install.ps1 | iex
+```
 
-- Local por padrão: nada é enviado para a internet em background.
-- Privacidade configurável por projeto, com exclusões e mascaramento de segredos.
-- Resumos determinísticos e offline sempre disponíveis.
-- IA opcional e explícita, acionada apenas por comando.
-- Baixo consumo de CPU, memória e disco.
+**macOS / Linux:**
 
-## Uso planejado
+```bash
+curl -fsSL https://raw.githubusercontent.com/LuizFer1/logy/main/scripts/install.sh | bash
+```
+
+Pin with `LOGY_VERSION=v0.1.0`. Forks: `LOGY_GITHUB_REPO=owner/name`.
+
+## Desenvolvimento
+
+```powershell
+go test ./...
+.\scripts\build-dev.ps1
+.\logyDEV.exe version
+```
+
+Opcional: defina `LOGY_HOME` para isolar config/dados (padrão `~/.logy`).
+
+Release: ver [`docs/release.md`](docs/release.md).
+
+## Uso
 
 ```text
 logy start
 logy status
+logy stop
+logy doctor
 
-logy root add C:\\dev
+logy root add C:\dev
 logy root list
 logy project list
-logy project ignore C:\\dev\\projeto-arquivado
-logy project unignore C:\\dev\\projeto-arquivado
+logy project show C:\dev\meu-projeto
+logy project ignore C:\dev\projeto-arquivado
+logy project unignore C:\dev\projeto-arquivado
+
+logy exec -- go test ./...
+logy note --project C:\dev\meu-projeto "Decidi separar o coletor de Git do armazenamento"
 
 logy today
 logy week
 logy month
-logy project show C:\\dev\\meu-projeto
-logy note "Decidi separar o coletor de Git do armazenamento"
+logy events --since 2026-08-01
 logy ask "o que eu fiz neste projeto ontem?"
+logy summarize
 logy summarize --ai
+
+logy purge --older-than 2025-01-01 --dry-run
+logy purge --older-than 2025-01-01
+
+logy startup enable
+logy startup status
+logy startup disable
 ```
 
-O Logy procura repositórios dentro das raízes configuradas e começa a acompanhá-los automaticamente. Projetos ignorados permanecem fora do acompanhamento até serem reativados.
+`logy start` roda em foreground (lock + named pipe + coletor Git nas raízes). Use outra janela para `status`/`stop`.
+
+Consultas (`today`, `ask`, `events`, …) funcionam com o daemon parado.
+
+## O que ele acompanha
+
+- Repositórios Git encontrados automaticamente pela presença de pastas `.git`
+- Commits, branches, status e diffstat
+- Comandos via `logy exec` (sem shell-string; stdin descartado)
+- Sessões de agentes via adaptador genérico JSON/JSONL (`internal/collectors`)
+- Mudanças de filesystem opcionais (desligado por padrão)
+- Notas manuais
 
 ## Privacidade
 
-O banco de dados é local e o usuário escolhe quais projetos e fontes acompanhar. Diffs e transcrições completas ficam desativados por padrão. Arquivos como `.env*`, diretórios de segredos e dependências podem ser excluídos, e padrões sensíveis como `token`, `password` e `api_key` são mascarados antes da persistência.
+- Dados 100% locais; nada é enviado em background
+- Diffs/transcrições completas desativados por padrão
+- Exclusões padrão (`.env*`, `secrets/**`, `node_modules/**`, `vendor/**`)
+- Mascaramento de `token`, `password`, `api_key`
+- `logy summarize --ai` / `logy ask --ai` só quando pedido e com `ai.enabled` + endpoint + `keyEnv`
+- Chaves de API vêm de variável de ambiente e não são gravadas no SQLite
 
-O comando `logy summarize --ai` só envia contexto quando o usuário o solicita e quando um provedor foi configurado. Chaves de API são lidas por variável de ambiente e não são armazenadas no banco.
+## Configuração
 
-## Status
+Arquivo `LOGY_HOME/config.yaml` (criado ao salvar raízes):
 
-O projeto está em desenvolvimento inicial. O design do MVP está documentado em [`docs/superpowers/specs/2026-08-31-logy-design.md`](docs/superpowers/specs/2026-08-31-logy-design.md).
+```yaml
+dataDir: C:\Users\voce\.logy\data
+roots:
+  - C:\dev
+discoveryDepth: 3
+discoveryInterval: 5m
+ai:
+  enabled: false
+  endpoint: ""
+  model: ""
+  keyEnv: ""
+```
 
 ## Direção técnica
 
-- Go.
-- SQLite em modo WAL.
-- Daemon único em background.
-- Named pipe local para controle entre CLI e daemon.
-- CLI como primeira interface; TUI como próxima camada de apresentação.
+- Go + SQLite (WAL, pure Go)
+- Daemon único com lock exclusivo
+- Named pipe local `\\.\pipe\logy-<user>` (sem TCP)
+- CLI primeiro; TUI depois
 
 ## Desenvolvimento
 
-O plano de implementação está em [`docs/superpowers/plans/2026-08-31-logy-mvp.md`](docs/superpowers/plans/2026-08-31-logy-mvp.md). A implementação será acompanhada por testes unitários, testes de integração e benchmarks de ingestão, descoberta e consulta.
+```text
+go test ./...
+go vet ./...
+```
+
+Design: [`docs/superpowers/specs/2026-08-31-logy-design.md`](docs/superpowers/specs/2026-08-31-logy-design.md)  
+Plano: [`docs/superpowers/plans/2026-08-31-logy-mvp.md`](docs/superpowers/plans/2026-08-31-logy-mvp.md)
 
 ## Licença
 

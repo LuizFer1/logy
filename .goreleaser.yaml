@@ -1,0 +1,44 @@
+version: 2
+
+project_name: logy
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: logy
+    main: ./cmd/logy
+    binary: logy
+    env:
+      - CGO_ENABLED=0
+    goos: [windows, darwin, linux]
+    goarch: [amd64, arm64]
+    ldflags:
+      - -s -w
+      - -X logy/internal/version.Version={{.Version}}
+      - -X logy/internal/version.Commit={{.ShortCommit}}
+      - -X logy/internal/version.Date={{.Date}}
+
+archives:
+  - id: default
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+
+checksum:
+  name_template: checksums.txt
+  algorithm: sha256
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+
+release:
+  draft: false
+  prerelease: auto
