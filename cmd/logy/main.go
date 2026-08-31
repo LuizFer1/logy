@@ -32,6 +32,7 @@ var commandNames = []string{
 	"doctor",
 	"version",
 	"update",
+	"help",
 }
 
 const usageSummary = "Usage: logy <command> [arguments]"
@@ -93,8 +94,9 @@ func runWith(opts cliOptions, args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 
-	switch args[0] {
-	case "-h", "--help", "help":
+	cmdName := resolveCommand(args[0])
+	switch cmdName {
+	case "-h", "--help":
 		writeUsage(stdout, "")
 		return 0
 	}
@@ -118,9 +120,10 @@ func runWith(opts cliOptions, args []string, stdout, stderr io.Writer) int {
 		"doctor":    c.cmdDoctor,
 		"version":   c.cmdVersion,
 		"update":    c.cmdUpdate,
+		"help":      c.cmdHelp,
 	}
 
-	handler, ok := handlers[args[0]]
+	handler, ok := handlers[cmdName]
 	if !ok {
 		writeUsage(stderr, fmt.Sprintf("unknown command: %s", args[0]))
 		return 1
@@ -150,17 +153,4 @@ func (c *cli) cmdVersion(args []string) error {
 	}
 	fmt.Fprintln(c.stdout, version.String())
 	return nil
-}
-
-func writeUsage(w io.Writer, problem string) {
-	if problem != "" {
-		fmt.Fprintln(w, problem)
-		fmt.Fprintln(w)
-	}
-
-	fmt.Fprintln(w, usageSummary)
-	fmt.Fprintln(w, "Commands:")
-	for _, name := range commandNames {
-		fmt.Fprintf(w, "  %s\n", name)
-	}
 }

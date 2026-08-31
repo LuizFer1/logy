@@ -68,6 +68,7 @@ func TestRunRecognizesCommands(t *testing.T) {
 		"startup":   true,
 		"version":   true,
 		"update":    true,
+		"help":      true,
 	}
 
 	for _, command := range commandNames {

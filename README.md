@@ -35,49 +35,42 @@ Release: ver [`docs/release.md`](docs/release.md).
 ## Uso
 
 ```text
-logy start
-logy status
-logy stop
-logy doctor
+logy help
+logy help start
+logy help sm
 
-logy start
-# na 1ª vez, o Logy pergunta as pastas-raiz (trabalho, startups, pessoal…)
-# digite um caminho por linha; linha vazia termina
+logy start          # str — 1ª vez pergunta pastas-raiz
+logy status         # st
+logy stop           # stp
 
 logy root add C:\trabalho
-logy root add
-# sem caminho: modo interativo para várias pastas
-logy root list
-logy project list
-logy project show C:\dev\meu-projeto
-logy project ignore C:\dev\projeto-arquivado
-logy project unignore C:\dev\projeto-arquivado
+logy root add       # interativo (várias pastas)
+logy rt list
+logy project list   # pr
 
 logy exec -- go test ./...
-logy note --project C:\dev\meu-projeto "Decidi separar o coletor de Git do armazenamento"
-
-logy today
-logy week
-logy month
-logy events --since 2026-08-01
-logy ask "o que eu fiz neste projeto ontem?"
-logy summarize
-logy summarize --ai
-
-logy purge --older-than 2025-01-01 --dry-run
-logy purge --older-than 2025-01-01
-
-logy startup enable
-logy startup status
-logy startup disable
-
-logy update --check
-logy update --yes
+logy today           # td
+logy sm --ai        # summarize
+logy ask "o que eu fiz ontem?"
+logy up --yes       # update
 ```
 
-`logy start` sobe o daemon **em background** e devolve o terminal. O processo continua após fechar a janela; pare com `logy stop` ou ao desligar o PC. Use `logy start --foreground` só para depurar.
+### Aliases
 
-Consultas (`today`, `ask`, `events`, …) funcionam com o daemon parado.
+| Comando | Atalho | Comando | Atalho |
+|---------|--------|---------|--------|
+| start | str | summarize | sm |
+| stop | stp | events | ev |
+| status | st | note | nt |
+| today | td | exec | ex |
+| week | wk | ask | ak |
+| month | mo | purge | pg |
+| root | rt | startup | su |
+| project | pr | doctor | doc |
+| version | ver | update | up |
+| help | h | | |
+
+`logy start` sobe o daemon **em background** e devolve o terminal. Pare com `logy stop` / `logy stp` ou ao desligar o PC.
 
 ## O que ele acompanha
 
