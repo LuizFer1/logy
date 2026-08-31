@@ -1,0 +1,8 @@
+.worktrees/
+.superpowers/
+
+# Local Logy data
+*.db
+*.db-wal
+*.db-shm
+logs/
