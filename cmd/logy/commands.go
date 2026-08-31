@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -511,7 +512,78 @@ func (c *cli) cmdDoctor([]string) error {
 	return nil
 }
 
-func (c *cli) cmdStart([]string) error {
+func (c *cli) cmdStart(args []string) error {
+	foreground := false
+	for _, arg := range args {
+		switch arg {
+		case "--foreground", "-f":
+			foreground = true
+		default:
+			return fmt.Errorf("unknown start flag: %s (usage: logy start [--foreground])", arg)
+		}
+	}
+	if foreground {
+		return c.runDaemonForeground()
+	}
+	return c.startDetached()
+}
+
+func (c *cli) startDetached() error {
+	if c.daemonReachable() {
+		return errors.New("logy daemon already running")
+	}
+	start := c.opts.StartBackground
+	if start == nil {
+		start = c.spawnDetachedDaemon
+	}
+	if err := start(c.opts.Home, c.opts.Pipe); err != nil {
+		return err
+	}
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		if c.daemonReachable() {
+			fmt.Fprintln(c.stdout, "logy daemon started")
+			return nil
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	return errors.New("logy daemon did not become ready")
+}
+
+func (c *cli) daemonReachable() bool {
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel()
+	conn, err := control.DialName(ctx, c.opts.Pipe)
+	if err != nil {
+		return false
+	}
+	_ = conn.Close()
+	return true
+}
+
+func (c *cli) spawnDetachedDaemon(home, pipe string) error {
+	exe, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	cmd := exec.Command(exe, "start", "--foreground")
+	cmd.Env = append(os.Environ(),
+		"LOGY_HOME="+home,
+		"LOGY_PIPE="+pipe,
+	)
+	cmd.Stdout = nil
+	cmd.Stderr = nil
+	cmd.Stdin = nil
+	daemon.Detach(cmd)
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	// Parent does not wait; child outlives this process.
+	_ = cmd.Process.Release()
+	return nil
+}
+
+func (c *cli) runDaemonForeground() error {
 	if err := os.MkdirAll(c.opts.Home, 0755); err != nil {
 		return err
 	}

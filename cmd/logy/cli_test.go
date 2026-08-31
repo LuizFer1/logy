@@ -217,7 +217,7 @@ func TestStatusWhenDaemonRunning(t *testing.T) {
 	}
 }
 
-func TestStartServesStatusThenStop(t *testing.T) {
+func TestStartForegroundServesStatusThenStop(t *testing.T) {
 	t.Parallel()
 	home := t.TempDir()
 	pipe := testCLIPipeName(t)
@@ -225,7 +225,7 @@ func TestStartServesStatusThenStop(t *testing.T) {
 	done := make(chan int, 1)
 	go func() {
 		var stdout, stderr bytes.Buffer
-		done <- runWith(cliOptions{Home: home, Pipe: pipe}, []string{"start"}, &stdout, &stderr)
+		done <- runWith(cliOptions{Home: home, Pipe: pipe}, []string{"start", "--foreground"}, &stdout, &stderr)
 	}()
 	t.Cleanup(func() { stopDaemon(t, home, pipe) })
 	waitRunning(t, home, pipe)
@@ -238,10 +238,57 @@ func TestStartServesStatusThenStop(t *testing.T) {
 	select {
 	case code := <-done:
 		if code != 0 {
-			t.Fatalf("start exit = %d, want 0 after stop", code)
+			t.Fatalf("start --foreground exit = %d, want 0 after stop", code)
 		}
 	case <-time.After(5 * time.Second):
-		t.Fatal("start did not return after stop")
+		t.Fatal("start --foreground did not return after stop")
+	}
+}
+
+func TestStartDetachedReturnsWhileDaemonRuns(t *testing.T) {
+	t.Parallel()
+	home := t.TempDir()
+	pipe := testCLIPipeName(t)
+
+	fgDone := make(chan int, 1)
+	opts := cliOptions{
+		Home: home,
+		Pipe: pipe,
+		StartBackground: func(home, pipe string) error {
+			go func() {
+				var stdout, stderr bytes.Buffer
+				fgDone <- runWith(cliOptions{Home: home, Pipe: pipe}, []string{"start", "--foreground"}, &stdout, &stderr)
+			}()
+			return nil
+		},
+	}
+	t.Cleanup(func() {
+		stopDaemon(t, home, pipe)
+		select {
+		case <-fgDone:
+		case <-time.After(5 * time.Second):
+		}
+	})
+
+	var stdout, stderr bytes.Buffer
+	started := time.Now()
+	code := runWith(opts, []string{"start"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("start exit = %d, stderr = %q", code, stderr.String())
+	}
+	if time.Since(started) > 5*time.Second {
+		t.Fatalf("start took too long: %s", time.Since(started))
+	}
+	if !strings.Contains(strings.ToLower(stdout.String()), "started") {
+		t.Fatalf("start stdout = %q, want started", stdout.String())
+	}
+
+	var statusOut, statusErr bytes.Buffer
+	if code := runWith(cliOptions{Home: home, Pipe: pipe}, []string{"status"}, &statusOut, &statusErr); code != 0 {
+		t.Fatalf("status exit = %d, stderr = %q", code, statusErr.String())
+	}
+	if !strings.Contains(statusOut.String(), "running: true") {
+		t.Fatalf("status = %q, want running", statusOut.String())
 	}
 }
 
@@ -253,7 +300,7 @@ func TestStartRejectsDuplicate(t *testing.T) {
 	done := make(chan int, 1)
 	go func() {
 		var stdout, stderr bytes.Buffer
-		done <- runWith(cliOptions{Home: home, Pipe: pipe}, []string{"start"}, &stdout, &stderr)
+		done <- runWith(cliOptions{Home: home, Pipe: pipe}, []string{"start", "--foreground"}, &stdout, &stderr)
 	}()
 	t.Cleanup(func() {
 		stopDaemon(t, home, pipe)
@@ -305,7 +352,7 @@ func TestStartCollectsGitFromRoot(t *testing.T) {
 	done := make(chan int, 1)
 	go func() {
 		var out, errBuf bytes.Buffer
-		done <- runWith(cliOptions{Home: home, Pipe: pipe}, []string{"start"}, &out, &errBuf)
+		done <- runWith(cliOptions{Home: home, Pipe: pipe}, []string{"start", "--foreground"}, &out, &errBuf)
 	}()
 	t.Cleanup(func() {
 		stopDaemon(t, home, pipe)

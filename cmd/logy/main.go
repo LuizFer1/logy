@@ -38,6 +38,8 @@ type cliOptions struct {
 	Home string
 	Pipe string
 	Now  time.Time
+	// StartBackground launches the daemon process. Nil uses a detached OS child.
+	StartBackground func(home, pipe string) error
 }
 
 type cli struct {
@@ -64,7 +66,11 @@ func runWith(opts cliOptions, args []string, stdout, stderr io.Writer) int {
 		opts.Home = home
 	}
 	if opts.Pipe == "" {
-		opts.Pipe = control.PipeName()
+		if pipe := strings.TrimSpace(os.Getenv("LOGY_PIPE")); pipe != "" {
+			opts.Pipe = pipe
+		} else {
+			opts.Pipe = control.PipeName()
+		}
 	}
 	if opts.Now.IsZero() {
 		opts.Now = time.Now()

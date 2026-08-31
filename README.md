@@ -66,7 +66,7 @@ logy startup status
 logy startup disable
 ```
 
-`logy start` roda em foreground (lock + named pipe + coletor Git nas raízes). Use outra janela para `status`/`stop`.
+`logy start` sobe o daemon **em background** e devolve o terminal. O processo continua após fechar a janela; pare com `logy stop` ou ao desligar o PC. Use `logy start --foreground` só para depurar.
 
 Consultas (`today`, `ask`, `events`, …) funcionam com o daemon parado.
 
