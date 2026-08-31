@@ -15,10 +15,6 @@ var redactionKeyPattern = regexp.MustCompile(`(?i)\b(token|password|api_key)\b\s
 
 func Redact(event Event, rules RedactionRules) Event {
 	normalized := Normalize(event)
-	if matchesAnyGlob(rules.ExcludeGlobs, normalized.ProjectPath, normalized.Directory) {
-		return normalized
-	}
-
 	mask := rules.Mask
 	if mask == "" {
 		mask = "[REDACTED]"

@@ -3,6 +3,7 @@ package events
 import (
 	"encoding/json"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 )
@@ -52,13 +53,13 @@ func TestRedact(t *testing.T) {
 			},
 		},
 		{
-			name: "skips excluded project path",
+			name: "preserves excluded project path",
 			event: Event{
 				StartedAt:   startedAt,
 				ProjectPath: "C:\\repo\\vendor\\pkg",
 				Directory:   "C:\\repo\\vendor\\pkg",
-				Summary:     "token=abc",
-				Payload:     json.RawMessage(`{"token":"abc"}`),
+				Summary:     "build complete",
+				Payload:     json.RawMessage(`{"status":"ok"}`),
 				Sensitivity: SensitivityNormal,
 			},
 			rules: RedactionRules{
@@ -69,9 +70,32 @@ func TestRedact(t *testing.T) {
 				EndedAt:     startedAt,
 				ProjectPath: "C:\\repo\\vendor\\pkg",
 				Directory:   "C:\\repo\\vendor\\pkg",
-				Summary:     "token=abc",
-				Payload:     json.RawMessage(`{"token":"abc"}`),
+				Summary:     "build complete",
+				Payload:     json.RawMessage(`{"status":"ok"}`),
 				Sensitivity: SensitivityNormal,
+			},
+		},
+		{
+			name: "masks sensitive values in excluded event",
+			event: Event{
+				StartedAt:   startedAt,
+				ProjectPath: "C:\\repo\\vendor\\pkg",
+				Directory:   "C:\\repo\\vendor\\pkg",
+				Summary:     "token=abc password=secret api_key=xyz",
+				Payload:     json.RawMessage(`{"token":"abc","password":"secret","api_key":"xyz"}`),
+				Sensitivity: SensitivityNormal,
+			},
+			rules: RedactionRules{
+				ExcludeGlobs: []string{"C:/repo/vendor/*"},
+			},
+			want: Event{
+				StartedAt:   startedAt,
+				EndedAt:     startedAt,
+				ProjectPath: "C:\\repo\\vendor\\pkg",
+				Directory:   "C:\\repo\\vendor\\pkg",
+				Summary:     "token=[REDACTED] password=[REDACTED] api_key=[REDACTED]",
+				Payload:     json.RawMessage(`{"api_key":"[REDACTED]","password":"[REDACTED]","token":"[REDACTED]"}`),
+				Sensitivity: SensitivityRedacted,
 			},
 		},
 	}
@@ -84,6 +108,9 @@ func TestRedact(t *testing.T) {
 			got := Redact(tt.event, tt.rules)
 			if !reflect.DeepEqual(got, tt.want) {
 				t.Fatalf("Redact() = %#v, want %#v", got, tt.want)
+			}
+			if strings.Contains(tt.name, "excluded") && !matchesAnyGlob(tt.rules.ExcludeGlobs, got.ProjectPath, got.Directory) {
+				t.Fatalf("Redact() returned event that no longer matches exclusion glob: %#v", got)
 			}
 		})
 	}
